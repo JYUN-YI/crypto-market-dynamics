@@ -1,7 +1,7 @@
 ---
 title: Crypto Market Dynamics
-emoji: 📚
-colorFrom: blue
+emoji: 🪙
+colorFrom: gray
 colorTo: yellow
 sdk: docker
 pinned: false
