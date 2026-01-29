@@ -1,0 +1,129 @@
+---
+title: "07 Tail Risk Extreme Behavior"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Motivation
+
+Why Tail Risk Matters?
+
+Traditional volatility only considers average volatility and does not reflect extreme losses.
+
+Investors are often most concerned with large price drops or surges.
+
+Objective: Analyze the extreme return behavior of BTC/ETH/BNB to examine the frequency, magnitude, and resonance of extreme events.
+
+## 2. Setup
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+library(ggplot2)
+
+source(here("src/utils/return_calculations.R"))
+```
+
+## 3. Load Data & Compute Log Returns
+```{r load_data, message=FALSE, warning=FALSE}
+btc <- read_csv(here("data/processed/BTC_clean.csv"))
+eth <- read_csv(here("data/processed/ETH_clean.csv"))
+bnb <- read_csv(here("data/processed/BNB_clean.csv"))
+
+btc_ret <- calc_log_returns(btc)
+eth_ret <- calc_log_returns(eth)
+bnb_ret <- calc_log_returns(bnb)
+```
+
+## 4. Identify Extreme Events
+```{r id_extreme_events, message=FALSE, warning=FALSE}
+threshold <- 0.1  # 10% daily change
+
+btc_extreme <- btc_ret %>% mutate(
+  extreme = abs(log_return) >= threshold
+)
+
+eth_extreme <- eth_ret %>% mutate(
+  extreme = abs(log_return) >= threshold
+)
+
+bnb_extreme <- bnb_ret %>% mutate(
+  extreme = abs(log_return) >= threshold
+)
+
+```
+
+## 5. Extreme Event Frequency & Summary
+```{r extreme_event_freq, message=FALSE, warning=FALSE}
+extreme_summary <- function(df, asset) {
+  df %>% summarise(
+    asset = asset,
+    extreme_days = sum(extreme, na.rm = TRUE),
+    total_days = n(),
+    extreme_ratio = extreme_days / total_days
+  )
+}
+
+bind_rows(
+  extreme_summary(btc_extreme, "BTC"),
+  extreme_summary(eth_extreme, "ETH"),
+  extreme_summary(bnb_extreme, "BNB")
+)
+```
+
+## 6. Tail Distribution Visualization
+```{r tail_distribition_vis, message=FALSE, warning=FALSE}
+ggplot(btc_ret, aes(x=log_return)) +
+  geom_histogram(bins=100, fill="steelblue", alpha=0.6) +
+  geom_density(color="firebrick") +
+  coord_cartesian(xlim=c(-0.2, 0.2)) +
+  labs(title="BTC Daily Log Return Distribution", x="Log Return", y="Frequency") +
+  theme_minimal()
+```
+
+## 7. Extreme Losses Over Time
+```{r extreme_lossed_over_time, message=FALSE, warning=FALSE}
+ggplot(btc_extreme, aes(x=timeOpen, y=log_return, color=extreme)) +
+  geom_point(alpha=0.6) +
+  scale_color_manual(values=c("FALSE"="steelblue","TRUE"="firebrick")) +
+  labs(title="BTC Extreme Daily Returns", x="Date", y="Log Return") +
+  theme_minimal()
+```
+
+## 8. QQ Plot for BTC, ETH, BNB
+```{r qq_plot, message=FALSE, warning=FALSE}
+library(ggplot2)
+
+plot_qq <- function(df, asset_name) {
+  ggplot(df, aes(sample = log_return)) +
+    stat_qq(color = "steelblue", alpha = 0.6) +
+    stat_qq_line(color = "firebrick") +
+    labs(
+      title = paste(asset_name, "QQ Plot of Daily Log Returns"),
+      x = "Theoretical Quantiles",
+      y = "Sample Quantiles"
+    ) +
+    theme_minimal()
+}
+
+# Print QQ plots
+plot_qq(btc_ret, "BTC")
+plot_qq(eth_ret, "ETH")
+plot_qq(bnb_ret, "BNB")
+```
+
+## 9. Tail Risk Metrics
+```{r tail_risk_metric, message=FALSE, warning=FALSE}
+library(PerformanceAnalytics)
+
+VaR(btc_ret$log_return, p=0.95, method="historical")
+ES(btc_ret$log_return, p=0.95, method="historical")
+```
+
+## 10. Key Insights
+- **Cryptocurrency return distributions exhibit heavy tails**, indicating that extreme price movements occur far more frequently than under normal assumptions.
+- **Downside tail risk dominates upside extremes**, with large negative returns being both more frequent and more severe.
+- **Smaller-cap assets (e.g., BNB, ETH)** show higher extreme-move frequency compared to BTC, reflecting greater fragility during stressed markets.
+- **Extreme return events cluster in time**, often coinciding with high-volatility regimes rather than occurring independently.
+- **Tail risk metrics (VaR / Expected Shortfall) materially exceed volatility-based risk estimates**, highlighting the limitations of variance-only risk measures.

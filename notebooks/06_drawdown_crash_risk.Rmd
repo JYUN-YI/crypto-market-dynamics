@@ -1,0 +1,210 @@
+---
+title: "06 Drawdown & Crash Risk Analysis"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Motivation
+While volatility captures short-term fluctuations, it does not fully reflect
+the severity of downside risk faced by investors.
+
+Drawdowns measure cumulative losses from peak to trough and provide a more
+intuitive representation of market crashes and recovery dynamics.
+
+This section examines drawdown behavior and crash risk across major
+cryptocurrencies
+
+## 2. Setup
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+
+source(here("src/utils/return_calculations.R"))
+```
+
+## 3. Load Data & Compute Log Returns
+```{r load_data, message=FALSE}
+btc <- read_csv(here("data/processed/BTC_clean.csv"))
+eth <- read_csv(here("data/processed/ETH_clean.csv"))
+bnb <- read_csv(here("data/processed/BNB_clean.csv"))
+
+btc_ret <- calc_log_returns(btc)
+eth_ret <- calc_log_returns(eth)
+bnb_ret <- calc_log_returns(bnb)
+```
+
+## 4. Drawdown Calculation
+```{r drawdown_cal, message=FALSE}
+btc_dd <- compute_drawdown(btc_ret)
+eth_dd <- compute_drawdown(eth_ret)
+bnb_dd <- compute_drawdown(bnb_ret)
+```
+
+## 5. Drawdown Visualization
+```{r drawdown_vis, message=FALSE}
+plot_drawdown <- function(df, asset) {
+  ggplot(df, aes(x = timeOpen, y = drawdown)) +
+    geom_area(fill = "firebrick", alpha = 0.6) +
+    labs(
+      title = paste(asset, "Historical Drawdowns"),
+      x = "Date",
+      y = "Drawdown (log scale)"
+    ) +
+    theme_minimal()
+}
+
+plot_drawdown(btc_dd, "BTC")
+plot_drawdown(eth_dd, "ETH")
+plot_drawdown(bnb_dd, "BNB")
+```
+
+## 6. Maximum Drawdown Comparison
+```{r max_drawdown_summary, message=FALSE}
+max_dd_summary <- function(df, asset) {
+  tibble(
+    asset = asset,
+    max_drawdown = min(df$drawdown, na.rm = TRUE)
+  )
+}
+
+bind_rows(
+  max_dd_summary(btc_dd, "BTC"),
+  max_dd_summary(eth_dd, "ETH"),
+  max_dd_summary(bnb_dd, "BNB")
+)
+```
+
+## 7. Crash Risk：Extreme single-day loss
+```{r crash_risk, message=FALSE, warning=FALSE}
+detect_crash <- function(df, threshold = -0.10) {
+  df %>%
+    mutate(
+      crash = log_return <= threshold
+    )
+}
+
+btc_crash <- detect_crash(btc_ret)
+eth_crash <- detect_crash(eth_ret)
+bnb_crash <- detect_crash(bnb_ret)
+```
+
+## 8. Crash Frequency Summary
+```{r crash_freq_summary, message=FALSE, warning=FALSE}
+crash_summary <- function(df, asset) {
+  df %>%
+    summarise(
+      asset = asset,
+      crash_days = sum(crash, na.rm = TRUE),
+      total_days = n(),
+      crash_ratio = crash_days / total_days
+    )
+}
+
+bind_rows(
+  crash_summary(btc_crash, "BTC"),
+  crash_summary(eth_crash, "ETH"),
+  crash_summary(bnb_crash, "BNB")
+)
+```
+
+```{r , message=FALSE, warning=FALSE}
+```
+
+
+
+```{r vol_regime, message=FALSE}
+btc_ret <- calc_log_returns(btc)
+
+btc_vol <- btc_ret %>%
+  mutate(
+    rolling_vol = zoo::rollapply(
+      log_return,
+      width = 30,
+      FUN = sd,
+      fill = NA,
+      align = "right"
+    )
+  )
+
+q <- quantile(btc_vol$rolling_vol, probs = c(0.33, 0.66), na.rm = TRUE)
+
+btc_regime <- btc_vol %>%
+  mutate(
+    regime = case_when(
+      rolling_vol <= q[1] ~ "Low Volatility",
+      rolling_vol <= q[2] ~ "Medium Volatility",
+      TRUE ~ "High Volatility"
+    )
+  )
+
+```
+
+## 9. Crash vs Volatility Regime
+Do crash events occur disproportionately during high-volatility regimes?
+```{r merge_regime_crash}
+btc_regime_crash <- btc_regime %>%
+  left_join(
+    btc_crash %>% select(timeOpen, crash),
+    by = "timeOpen"
+  )
+```
+```{r crash_by_regime, message=FALSE, warning=FALSE}
+btc_regime_crash %>%
+  group_by(regime) %>%
+  summarise(
+    crash_days = sum(crash, na.rm = TRUE),
+    total_days = n(),
+    crash_ratio = crash_days / total_days
+  )
+```
+Although high-volatility regimes account for fewer total days, they
+contribute disproportionately to crash events.
+
+```{r crash_ratio_plot, fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+btc_regime_crash %>%
+  group_by(regime) %>%
+  summarise(crash_ratio = mean(crash, na.rm = TRUE)) %>%
+  ggplot(aes(x = regime, y = crash_ratio, fill = regime)) +
+  geom_col() +
+  labs(
+    title = "Crash Probability by Volatility Regime (BTC)",
+    x = "Volatility Regime",
+    y = "Crash Probability"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r crash_overlay_plot, fig.height=5, fig.width=9, message=FALSE, warning=FALSE}
+ggplot(btc_regime, aes(x = timeOpen, y = rolling_vol)) +
+  geom_line(color = "steelblue") +
+  geom_point(
+    data = btc_regime_crash %>% filter(crash),
+    aes(x = timeOpen, y = rolling_vol),
+    color = "firebrick",
+    size = 1.5,
+    alpha = 0.7
+  ) +
+  labs(
+    title = "Crash Events Overlayed on Rolling Volatility (BTC)",
+    x = "Date",
+    y = "30-Day Rolling Volatility"
+  ) +
+  theme_minimal()
+```
+
+Crash events cluster around periods of elevated volatility,
+supporting regime-based risk modeling.
+
+These results indicate that volatility regimes are not merely descriptive,
+but carry meaningful predictive information regarding downside risk.
+
+# 10. Key Insights
+- Cryptocurrency markets experience **severe and prolonged drawdowns.**
+- High-volatility regimes are strongly associated with crash events.
+- BTC exhibits smaller maximum drawdowns relative to smaller-cap assets,
+indicating partial risk mitigation from market dominance.
+- Volatility alone understates downside risk; drawdown-based measures
+provide essential insights for portfolio construction.

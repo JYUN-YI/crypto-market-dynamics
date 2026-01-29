@@ -1,0 +1,89 @@
+---
+title: "04 Arima Garch Modeling"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+Given evidence of mean stationarity but variance non-stationarity, we model returns using an ARMA–GARCH framework.
+
+## 1. Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(tseries)
+library(forecast)
+library(rugarch)
+library(here)
+```
+
+## 2. Load Daliy Returns
+```{r load_daliy_returns, message=FALSE}
+btc <- read_csv(here("data/processed/BTC_daily_returns.csv"))
+eth <- read_csv(here("data/processed/ETH_daily_returns.csv"))
+bnb <- read_csv(here("data/processed/BNB_daily_returns.csv"))
+```
+
+## 3. Exploratory Analysis (ACF / PACF)
+Determine whether the mean equation needs AR/MA terms.
+```{r eda_acf_pacf, message=FALSE}
+par(mfrow =c(1,2))
+acf(btc$daily_return, main = "BTC ACF")
+pacf(btc$daily_return, main = "BTC PACF")
+par(mfrow = c(1,1))
+```
+
+## 4. ARIMA (Mean Equation)
+Since the returns are already approximately stationary, we do not perform differencing.
+```{r arima, message=FALSE}
+btc_arima <- auto.arima(
+  btc$daily_return,
+  seasonal = FALSE,
+  stationary = TRUE
+)
+summary(btc_arima)
+```
+
+## 5. Residual Diagnostics
+If:
+
+- The residuals have no autocorrelation → the mean model is sufficient
+
+- The squared residuals still have structure → GARCH is needed
+```{r residual_diagnostics, message=FALSE}
+checkresiduals(btc_arima)
+```
+
+## 6. GARCH Specification (Variance Equation)
+```{r garch, message=FALSE}
+spec <- ugarchspec(
+  variance.mode = list(
+    model = "sGARCH",
+    garchOrder = c(1,1)
+  ),
+  mean.model = list(
+    armaOrder = c(
+      btc_arima$arma[1],
+      btc_arima$arma[2]
+    ),
+    include.mean = TRUE
+  ),
+  distribution.model = "std"  #fat tails
+)
+```
+
+## 7. Fit GARCH Model
+```{r fit_garch, message=FALSE}
+btc_garch <- ugarchfit(
+  spec = spec,
+  data = btc$daily_return
+)
+btc_garch
+```
+
+## 8. Model Interpretation
+- **ARMA** captures short-term dependence in returns
+- **GARCH(1,1)** captures volatility clustering
+- **Student-t** distribution accounts for fat tails
+
+This specification aligns with stylized facts observed in cryptocurrency markets.

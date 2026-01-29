@@ -1,0 +1,77 @@
+---
+title: "03 Stationarity Tests"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Steup 
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(tseries)
+library(here)
+source(here::here("src/utils/return_calculations.R"))
+```
+
+## 2. Load Daily Returns
+```{r load_daily_returns, message=FALSE}
+btc <- read_csv(here("data/processed/BTC_daily_returns.csv"))
+eth <- read_csv(here("data/processed/ETH_daily_returns.csv"))
+bnb <- read_csv(here("data/processed/BNB_daily_returns.csv"))
+```
+
+## 3. Stationarity Test Functions
+```{r stationarity_test_functions, message=FALSE}
+run_stationarity_tests <- function(x){
+  list(
+    ADF = adf.test(x),
+    KPSS = kpss.test(x),
+    PP = pp.test(x)
+  )
+}
+```
+
+## 4. Apply Tests (Daily Returns)
+```{r apply_tests, message=FALSE, warning=FALSE}
+btc_tests <- run_stationarity_tests(btc$daily_return)
+eth_tests <- run_stationarity_tests(eth$daily_return)
+bnb_tests <- run_stationarity_tests(bnb$daily_return)
+```
+
+## 5. Results Summary
+```{r results_summary, message=FALSE}
+extract_results <- function(test_list, asset) {
+  tibble(
+    asset = asset,
+    test = c("ADF", "KPSS", "PP"),
+    statistic = c(
+      test_list$ADF$statistic,
+      test_list$KPSS$statistic,
+      test_list$PP$statistic 
+    ),
+    p_value = c(
+      test_list$ADF$p.value,
+      test_list$KPSS$p.value,
+      test_list$PP$p.value
+    )
+  )
+}
+
+bind_rows(
+  extract_results(btc_tests, "BTC"),
+  extract_results(eth_tests, "ETH"),
+  extract_results(bnb_tests, "BNB")
+)
+```
+While both ADF and Phillips–Perron tests strongly reject the presence of a unit root in daily returns, the KPSS test rejects the null of stationarity. This apparent contradiction suggests that although returns are mean-stationary, they exhibit time-varying volatility and potential structural breaks, which is consistent with stylized facts of cryptocurrency markets.
+
+
+## 6. Interpretation
+
+- ADF / PP reject the null hypothesis →  evidence against unit root
+
+- KPSS fails to reject the null → evidence for stationarity
+
+Together, the results indicate that daily returns are stationary,
+which supports the use of ARIMA and GARCH models in subsequent analysis.

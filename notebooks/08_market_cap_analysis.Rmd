@@ -1,0 +1,136 @@
+---
+title: "08 Market Capitalization & Risk Structure Analysis"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Motivation
+Market capitalization is often used as a proxy for liquidity, maturity,
+and systemic importance in cryptocurrency markets.
+
+Larger-cap assets are generally perceived as more stable, while smaller-cap
+assets tend to exhibit higher volatility and crash risk.
+
+This section investigates whether market capitalization is systematically
+related to risk characteristics, including volatility, drawdowns, and tail risk.
+
+## 2. Setup
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+
+source(here("src/utils/return_calculations.R"))
+```
+
+## 3. Load Data
+```{r load_data, message=FALSE, warning=FALSE}
+btc <- read_csv(here("data/processed/BTC_clean.csv"))
+eth <- read_csv(here("data/processed/ETH_clean.csv"))
+bnb <- read_csv(here("data/processed/BNB_clean.csv"))
+```
+
+
+## 4. Market Cap Overview
+### 4-1. Market Cap Distribution
+```{r market_cap_dist, message=FALSE}
+bind_rows(
+  btc %>% mutate(asset = "BTC"),
+  eth %>% mutate(asset = "ETH"),
+  bnb %>% mutate(asset = "BNB")
+) %>%
+  ggplot(aes(x = marketCap, fill = asset)) +
+  geom_histogram(bins = 50, alpha = 0.6, position = "identity") +
+  scale_x_log10() +
+  labs(
+    title = "Market Capitalization Distribution (Log Scale)",
+    x = "Market Cap (log scale)",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+```
+
+## 5. Market Cap vs Volatility
+### 5-1. Compute Volatility Summary
+```{r cap_vs_vol, message=FALSE}
+compute_vol_summary <- function(df, asset) {
+  df %>%
+    calc_log_returns() %>%
+    summarise(
+      asset = asset,
+      avg_vol = sd(log_return, na.rm = TRUE),
+      median_cap = median(marketCap, na.rm = TRUE)
+    )
+}
+
+vol_cap_summary <- bind_rows(
+  compute_vol_summary(btc, "BTC"),
+  compute_vol_summary(eth, "ETH"),
+  compute_vol_summary(bnb, "BNB")
+)
+
+vol_cap_summary
+```
+
+### 5-2. Visualization
+```{r vol_cap_plot, message=FALSE}
+ggplot(vol_cap_summary,
+       aes(x = median_cap, y = avg_vol, label = asset)) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_text(nudge_y = 0.001) +
+  scale_x_log10() +
+  labs(
+    title = "Market Capitalization vs Volatility",
+    x = "Median Market Cap (log scale)",
+    y = "Return Volatility"
+  ) +
+  theme_minimal()
+```
+
+## 6. Market Cap vs Drawdown Severity
+
+```{r cap_drawdown, message=FALSE}
+compute_max_dd <- function(df, asset) {
+  dd <- compute_drawdown(calc_log_returns(df))
+  
+  tibble(
+    asset = asset,
+    max_drawdown = min(dd$drawdown, na.rm = TRUE),
+    median_cap = median(df$marketCap, na.rm = TRUE)
+  )
+}
+
+dd_cap_summary <- bind_rows(
+  compute_max_dd(btc, "BTC"),
+  compute_max_dd(eth, "ETH"),
+  compute_max_dd(bnb, "BNB")
+)
+
+dd_cap_summary
+```
+
+```{r dd_cap_plot, message=FALSE}
+ggplot(dd_cap_summary,
+       aes(x = median_cap, y = max_drawdown, label = asset)) +
+  geom_point(size = 3, color = "firebrick") +
+  geom_text(nudge_y = 0.05) +
+  scale_x_log10() +
+  labs(
+    title = "Market Capitalization vs Maximum Drawdown",
+    x = "Median Market Cap (log scale)",
+    y = "Maximum Drawdown"
+  ) +
+  theme_minimal()
+```
+
+## 7. Interpretation
+- Larger market-cap assets tend to exhibit **lower volatility and shallower drawdowns**
+- Smaller-cap assets display **higher tail risk and more extreme downside behavior**
+- Market capitalization acts as a **structural risk factor**, not merely a descriptive statistic 
+
+## 8. Key Insights
+- Market capitalization is **negatively related to volatility and drawdown severity**
+- BTC’s dominant market cap contributes to its **relative stability**
+- Smaller-cap cryptocurrencies carry **disproportionate downside and tail risk**
+- Market cap should be treated as a **core risk dimension** in crypto portfolio construction

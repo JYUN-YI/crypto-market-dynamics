@@ -1,0 +1,83 @@
+---
+title: "02 Daily Returns Analysis"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+library(scales)     # for plotting
+library(ggplot2)
+source(here::here("src/utils/return_calculations.R"))
+```
+
+## 2. Load Clean Data 
+```{r load_clean_data, message=FALSE}
+btc_clean <- read_csv(here::here("data/processed/BTC_clean.csv"))
+eth_clean <- read_csv(here::here("data/processed/ETH_clean.csv"))
+bnb_clean <- read_csv(here::here("data/processed/BNB_clean.csv"))
+```
+
+## 3. Calculate Daily Returns
+```{r calculate_daily_returns, message=FALSE}
+calc_daily_returns <- function(df) {
+df %>%
+arrange(timeClose) %>%
+mutate(
+daily_return = (close / lag(close)) - 1
+) %>%
+drop_na()
+}
+
+btc_daily <- calc_daily_returns(btc_clean)
+eth_daily <- calc_daily_returns(eth_clean)
+bnb_daily <- calc_daily_returns(bnb_clean)
+```
+
+## 4. Save Daily Returns
+```{r save_daily_returns, message=FALSE}
+write_csv(btc_daily, here::here("data/processed/BTC_daily_returns.csv"))
+write_csv(eth_daily, here::here("data/processed/ETH_daily_returns.csv"))
+write_csv(bnb_daily, here::here("data/processed/BNB_daily_returns.csv"))
+```
+
+## 5. Summary Statistics
+```{r summary_statistics, message=FALSE}
+summary_stats <- function(df, name){
+tibble(
+crypto = name,
+mean_return = mean(df$daily_return),
+sd_return = sd(df$daily_return),
+min_return = min(df$daily_return),
+max_return = max(df$daily_return)
+)
+}
+
+bind_rows(
+summary_stats(btc_daily, "BTC"),
+summary_stats(eth_daily, "ETH"),
+summary_stats(bnb_daily, "BNB")
+)
+```
+
+## 6. Visualization 
+```{r visualization, message=FALSE}
+ggplot(bind_rows(
+mutate(btc_daily, crypto="BTC"),
+mutate(eth_daily, crypto="ETH"),
+mutate(bnb_daily, crypto="BNB")
+), aes(x=timeClose, y=daily_return, color=crypto)) +
+geom_line() +
+scale_y_continuous(labels=scales::percent_format(accuracy=0.01)) +
+labs(
+title="Daily Returns",
+x="Date",
+y="Daily Return"
+) +
+theme_minimal()
+```

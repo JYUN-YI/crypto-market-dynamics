@@ -1,0 +1,138 @@
+---
+title: "05 Volatility Regime Analysis"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Motivation
+
+Financial markets often exhibit **volatility clustering**, where periods of
+high volatility are followed by high volatility, and low volatility periods
+persist over time.
+
+This section investigates whether cryptocurrency markets exhibit
+**distinct volatility regimes**, and how these regimes evolve over time.
+
+---
+
+## 2. Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+library(zoo)
+
+source(here("src/utils/return_calculations.R"))
+```
+
+## 3. Load Processed Data
+```{r load_process_data, message=FALSE, warning=FALSE}
+btc <- read_csv(here("data/processed/BTC_clean.csv"))
+eth <- read_csv(here("data/processed/ETH_clean.csv"))
+bnb <- read_csv(here("data/processed/BNB_clean.csv"))
+```
+
+## 4. Compare Daily Log Returns
+```{r compare_daily_log_returns, message=FALSE, warning=FALSE}
+btc_ret <- calc_log_returns(btc)
+eth_ret <- calc_log_returns(eth)
+bnb_ret <- calc_log_returns(bnb)
+```
+
+## 5. Rolling Volatility Estimation
+We estimate rolling volatility using a 30-day window to capture short- to medium-term market risk dynamics.
+```{r rolling_volaility_estimation, message=FALSE, warning=FALSE}
+rolling_vol <- function(df, window = 30) {
+  df %>%
+    dplyr::mutate(
+      rolling_vol = zoo::rollapply(
+        log_return, 
+        width = window,
+        FUN = sd,
+        fill = NA,
+        align = "right"
+      )
+    )
+}
+btc_vol <- rolling_vol(btc_ret)
+eth_vol <- rolling_vol(eth_ret)
+bnb_vol <- rolling_vol(bnb_ret)
+```
+
+## 6. Identifying Volatility Regimes
+We classify volatility regimes using quantile-based thresholds:
+- Low volatility: bottom 33%
+- Medium volatilty: middle range
+- High volatility: top 33%
+```{r id_vol_regimes, message=FALSE, warning=FALSE}
+assign_regime <- function(df) {
+  q <- quantile(df$rolling_vol, probs=c(0.33, 0.66), na.rm=TRUE)
+  
+  df %>%
+    mutate(
+      regime = case_when(
+        rolling_vol <= q[1] ~ "Low Volatility",
+        rolling_vol <= q[2] ~ "Medium Volatility",
+        TRUE ~ "High Volatility"
+      )
+    )
+}
+
+btc_regime <- assign_regime(btc_vol)
+eth_regime <- assign_regime(eth_vol)
+bnb_regime <- assign_regime(bnb_vol)
+```
+
+## 7. Volatility Regime Visualization
+```{r define_vol_regime_visualization, message=FALSE, warning=FALSE}
+plot_regime <- function(df, asset_name) {
+  ggplot(df, aes(x=timeOpen, y=rolling_vol, color=regime)) + geom_line(alpha=0.8) + scale_color_manual(
+    values = c(
+      "Low Volatility" = "steelblue",
+      "Medium Volatility" = "orange", 
+      "High Volatility" = "firebrick"
+    )) + 
+    labs(
+      title = paste(asset_name, "Rolling Volatility Regimes"),
+      x = "Date",
+      y = "30-Day Rolling Volatilty",
+      color = "Regime"
+      ) +
+    theme_minimal()
+}
+```
+
+## 8. Regime Distribution Summary
+```{r regime_distribution_summary, message=FALSE, warning=FALSE}
+regime_summary <- function(df, asset) {
+  df %>% 
+    count(regime) %>%
+    mutate(
+      asset = asset,
+      proportion = n / sum(n)
+    )
+}
+
+bind_rows(
+  regime_summary(btc_regime, "BTC"),
+  regime_summary(eth_regime, "ETH"),
+  regime_summary(bnb_regime, "BNB")
+)
+```
+
+```{r vol_regime_visualization, fig.height=5, fig.width=9, warning=FALSE}
+print(plot_regime(btc_regime, "BTC"))
+print(plot_regime(eth_regime, "ETH"))
+print(plot_regime(bnb_regime, "BNB"))
+```
+
+## 9. Key Insights 
+- Cryptocurrency markets exhibit **clear volatility clustering**.
+- High-volatility regimes coincide with major market events and drawdowns.
+- BTC shows more persistent medium-volatility regimes compared to smaller-cap assets.
+- These regimes motivate the use of **GARCH-type models** for volatility forecasting.
+
+This regime-based perspective provides a foundation for downstream
+risk analysis, including drawdown and tail risk assessments.

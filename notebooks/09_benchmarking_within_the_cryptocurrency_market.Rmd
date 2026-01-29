@@ -1,0 +1,133 @@
+---
+title: "09 Benchmarking Within the Cryptocurrency Market"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Motivation
+**Bitcoin (BTC)** is used as an internal benchmark, representing
+the most liquid and dominant asset in the cryptocurrency market.
+
+This section evaluates whether other major cryptocurrencies exhibit
+systematically higher risk relative to Bitcoin.
+
+## 2. Benchmark Definition
+- **Benchmark asset**: Bitcoin (BTC)
+- **Comparison assets**: Ethereum (ETH), Binance (BNB)
+- **Risk dimensions**:
+  - Volatility
+  - Drawdowns
+  - Crash frequency
+  - Tail behavior (from previous sections)
+
+BTC serves as a market proxy due to its market dominance,
+liquidity, and longest trading history.
+
+## 3. Volatility Benchmarking
+What we show: 
+- Table: σ(log returns) for BTC / ETH / BNB
+- Optional bar chart
+
+ETH and BNB consistently exhibit higher return volatility
+relative to Bitcoin, indicating increased short-term risk exposure.
+
+## 4. Drawdown Severity Comparison
+What we show:
+
+- Max drawdown table
+- Optional overlay plot（BTC vs ETH）
+
+While Bitcoin experiences severe drawdowns, smaller-cap assets
+tend to suffer deeper and more prolonged losses during market downturns.
+
+## 5. Crash Frequency Benchmark
+What we show: 
+
+- Crash ratio table（≥10% daily loss）
+- BTC vs others
+
+Extreme single-day losses occur more frequently in non-BTC assets,
+highlighting the stabilizing role of market size and liquidity.
+
+
+## 6. Key Insights
+
+- Bitcoin serves as a relatively lower-risk benchmark within the crypto market.
+- Smaller-cap cryptocurrencies exhibit higher volatility, deeper drawdowns,
+and more frequent crash events.
+- Market dominance and liquidity appear to mitigate, but not eliminate,
+downside risk.
+- Risk differences across crypto assets are structural rather than incidental.
+
+## 7. Why This Benchmarking Matters?
+Internal benchmarking avoids inappropriate cross-asset comparisons
+and provides a more realistic assessment of relative risk within the
+cryptocurrency ecosystem.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+
+source(here("src/utils/return_calculations.R"))
+```
+
+``` {r processing, message=FALSE}
+## Load processed data
+btc <- read_csv(here("data/processed/BTC_clean.csv"))
+eth <- read_csv(here("data/processed/ETH_clean.csv"))
+bnb <- read_csv(here("data/processed/BNB_clean.csv"))
+
+## Compute log returns 
+btc_ret <- calc_log_returns(btc)
+eth_ret <- calc_log_returns(eth)
+bnb_ret <- calc_log_returns(bnb)
+
+## Compute drawdowns
+btc_dd <- compute_drawdown(btc_ret)
+eth_dd <- compute_drawdown(eth_ret)
+bnb_dd <- compute_drawdown(bnb_ret)
+
+## Crash detection 
+btc_crash <- detect_crash(btc_ret)
+eth_crash <- detect_crash(eth_ret)
+bnb_crash <- detect_crash(bnb_ret)
+```
+
+``` {r risk_summary_1, message=FALSE}
+risk_summary <- tibble(
+  asset = c("BTC", "ETH", "BNB"),
+  volatility = c(
+    sd(btc_ret$log_return),
+    sd(eth_ret$log_return),
+    sd(bnb_ret$log_return)
+  ),
+  max_drawdown = c(
+    min(btc_dd$drawdown),
+    min(eth_dd$drawdown),
+    min(bnb_dd$drawdown)
+  ),
+  crash_ratio = c(
+    mean(btc_crash$crash),
+    mean(eth_crash$crash),
+    mean(bnb_crash$crash)
+  )
+)
+risk_summary
+```
+
+``` {r risk_summary_2, message=FALSE}
+risk_summary %>%
+  pivot_longer(-asset) %>%
+  ggplot(aes(x = asset, y = value, fill = asset)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ name, scales = "free_y") +
+  labs(
+    title = "Risk Benchmarking Within Cryptocurrency Market",
+    x = "Asset",
+    y = "Value"
+  ) +
+  theme_minimal()
+```
+

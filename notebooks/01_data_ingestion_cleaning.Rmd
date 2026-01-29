@@ -1,0 +1,49 @@
+---
+title: "01 Data Ingestion & Cleaning"
+author: "Kimberly Lin"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## 1. Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(here)
+source(here::here("src/utils/data_loader.R"))
+```
+
+
+## 2. Load Raw Data
+```{r load-data, message=FALSE}
+btc <- read_csv(here("data/raw/BTC_merged_2010_to_2025.csv"))
+eth <- read_csv(here("data/raw/ETH_merged_2015_to_2025.csv"))
+bnb <- read_csv(here("data/raw/BNB_merged_2017_to_2025.csv"))
+```
+
+## 3. Inspect & Clean
+```{r clean-data, message=FALSE}
+btc_clean <- clean_crypto(btc)
+eth_clean <- clean_crypto(eth)
+bnb_clean <- clean_crypto(bnb)
+```
+
+## 4. Save Processed Data
+```{r save-clean-data, message=FALSE}
+write_csv(btc_clean, here("data/processed/BTC_clean.csv"))
+write_csv(eth_clean, here("data/processed/ETH_clean.csv"))
+write_csv(bnb_clean, here("data/processed/BNB_clean.csv"))
+```
+
+## 5. Verify Processed Files
+```{r list-processed-data, message=FALSE}
+list.files(here("data/processed"))
+```
+
+## 6. Peek at first rows
+```{r show-data, message=FALSE}
+head(btc_clean)
+head(eth_clean)
+head(bnb_clean)
+```
